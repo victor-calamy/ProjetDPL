@@ -1,12 +1,14 @@
+from platform import java_ver
 import pandas as pd
 import numpy as np
 import scipy
 import librosa 
 import random
 import tensorflow as tf
+print("Num GPUs Available: ", len(tf.config.list_physical_devices('GPU')))
 from keras.models import Sequential
 from keras.optimizers import Adam
-from keras.layers import Dense,Flatten 
+from keras.layers import Dense,Flatten,Dropout 
 import matplotlib.pyplot as plt
 from os import listdir
 from keras.utils import to_categorical
@@ -34,7 +36,16 @@ def affichage(img) :
     plt.imshow(img)
     plt.show()
     
+#Hyperparamètres
+class hyperparams : 
+    couches =[] #liste pour le nombre de neurones par couches denses
+    dropout = [] #valeur du dropout pour chaque couches
+    fonctionAct=[] #fonction activation pour chaque couches
+    epoques = 0
+    batchsize = 5
 
+    def toString(self):
+        return("couches : " + str(self.couches) + " dropout : " + str(self.dropout) + " fonctionAct : " + str(self.fonctionAct) + " epoques : " + str(self.epoques))
 
 
 """----------------------------------------------------------------------------------------------------------------------
@@ -86,7 +97,6 @@ def createDataset():
     X=np.array(X)
 
     # maintenant, on va remplacer les label string en entier.
-    print(np.unique(np.array(Y)))
     for k in range(len(Y)):
         num = LISTE_LABELS.index(Y[k][0])
         Y[k][0]=num
@@ -97,32 +107,66 @@ def createDataset():
 
 """----------------------------------------------------------------------------------------------------------------------
 
-Création du modèle :
+Création du modèle 
 
 ----------------------------------------------------------------------------------------------------------------------"""
-    
-
-def createModelDense():
+def createModelDense(hyperparams):
     model = Sequential()
-    model.add(Flatten())
-    model.add(Dense(NB_CLASSES, activation='softmax'))
-    model.compile(loss='categorical_crossentropy',
-                optimizer="adam",
-                metrics=['acc'])
+    model.add(Flatten())# on applatit les données
+
+    for k in range (len(hyperparams.couches)):
+            model.add(Dense(hyperparams.couches[k],activation = hyperparams.fonctionAct[k]))
+            if(hyperparams.dropout[k] !=0):
+                model.add(Dropout(hyperparams.dropout[k]))
+
+    model.add(Dense(NB_CLASSES, activation='softmax'))#couche de sortie
+
+    model.compile(loss='categorical_crossentropy',optimizer="adam",metrics=['acc'])
 
     return(model)
 
-def entrainement():
+def entrainement(hyperparams):
     x_train, x_test, y_train, y_test = createDataset()
     y_train = to_categorical(y_train, NB_CLASSES)
     y_test = to_categorical(y_test, NB_CLASSES)
 
-    model = createModelDense()
-    model.fit(x_train,
+    model = createModelDense(hyperparams)
+    res = model.fit(x_train,
           y_train,
           batch_size=5,
-          epochs=100)
+          epochs=hyperparams.epoques)
 
     #validation :
-    model.evaluate(x_test,y_test)
-entrainement()
+    return(model.evaluate(x_test,y_test),res)
+hyperparam1 = hyperparams()
+hyperparam1.couches = [256,128,64,32,16]
+hyperparam1.dropout = [0.2,0.1,0,0,0]
+hyperparam1.fonctionAct = ["relu","tanh","sigmoid","tanh","sigmoid"]
+hyperparam1.epoques = 50
+entrainement(hyperparam1)
+
+def testPlusieursHyperParam():
+    """
+    Cette fonction nous permet de tester une palette d'hyperparametres afin de déterminer les meilleurs. On va prendre 3 configurations par hyperparam.
+
+    """
+    ListeCouches = [[32],[64],[128]]
+    listeDropout = [[0],[0.1],[0.2]]
+    listeFonAct= [["relu"],["tanh"],["sigmoid"]]
+    liste_hyperparams = []
+    for k in range (len(ListeCouches)):
+        for i in range (len(listeDropout)):
+            for j in range (len(listeFonAct)):
+                hyperparam1 = hyperparams()
+                hyperparam1.couches = ListeCouches[k]
+                hyperparam1.dropout = listeDropout[i]
+                hyperparam1.fonctionAct = listeFonAct[j]
+                hyperparam1.epoques = 20
+                liste_hyperparams.append(hyperparam1)
+
+    liste_resultats=[]
+    for k in range  (len(liste_hyperparams)):
+        eval, acc = entrainement(liste_hyperparams[k])
+        liste_resultats.append([liste_hyperparams[k].toString(),[eval[1], acc.history['acc'][-1]]])
+    return(liste_resultats)
+
